@@ -1,0 +1,1143 @@
+{
+  "$comment": "ASCR-08-OE03-Schema-and-SOAR-Source.json. Version 1.0 — June 2026. Canonical machine-readable source for the ASCR-08 analog_attestation extension schema and six vendor-neutral detection specifications. The legacy key name 'sigma_rules' is retained for compatibility, but the objects in that array are ASCR detection specifications, not directly importable Sigma rules. Translate each specification into the target SIEM/SOAR query language, document platform-specific aggregation and persistence semantics, and validate the translated rule before production activation. Schema validation uses 'analog_attestation_schema'. The ASCR-08 main playbook governs overall; this file governs the ASCR-08 extension schema and detection-specification logic over OE02.",
+  "file_id": "ASCR-08-OE03-Schema-and-SOAR-Source",
+  "version": "1.0 — June 2026",
+  "consolidates": {
+    "ASCR-08-CF3": "analog_attestation extension schema represented by analog_attestation_schema",
+    "ASCR-08-CF5": "six ASCR vendor-neutral detection specifications represented under the legacy sigma_rules key"
+  },
+  "calibration_instructions": {
+    "applies_to": [
+      "ascr08-aba-01-v1.0",
+      "ascr08-aba-02-v1.0",
+      "ascr08-aba-03-v1.0",
+      "ascr08-rsd-01-v1.0",
+      "ascr08-rsd-02-v1.0",
+      "ascr08-rsd-03-v1.0"
+    ],
+    "note": "Calibrate all [CALIBRATE] thresholds, persistence windows, aggregation/lookback windows, corroboration profiles, and validation acceptance criteria against commissioning-period evidence before production activation. Numeric values identified as commissioning starting points are not universal production defaults.",
+    "steps": [
+      "Step 1: During ASCR-10 shadow mode, record baseline distribution parameters per sensor tier, accelerator profile, and action type, including the signal fields and independent quality metrics needed by the deployed specifications.",
+      "Step 2: Define the ABA-03 corroboration profile for each supported incident-signature mapping: expected field or fields, direction or pattern, minimum site-calibrated deviation, contextual qualifiers, and deduplication key.",
+      "Step 3: Translate all six ASCR detection specifications into the target SIEM/SOAR query language and implement the persistence, grouping, reset, missing-data, and deduplication contracts in this file.",
+      "Step 4: Run each translated rule against commissioning or representative validation data and through the applicable ASCR-09 production-representative exercise; measure false positives and missed expected detections.",
+      "Step 5: Calibrate ABA-01 sigma threshold and consecutive-cycle persistence; ABA-02 sigma threshold and time persistence; RSD-01 rolling lookback, threshold, and persistence; all other [CALIBRATE] values and approved profiles; and the false-positive acceptance criterion. Document the rationale and baseline evidence in the deployment sensor-provenance record and in OE02 Calibration & Validation > Approved Calibration Record, with the applicable profile/reference recorded in OE01 Deployment response configuration. Route vendor or fourth-party implications to ASCR-17 where applicable.",
+      "Step 6: Required detection-logic changes follow the deployment security-artifact change authority. Record deployment-approved values/profile identifiers in OE02 Calibration & Validation > Approved Calibration Record, record the applicable profile/reference in OE01 Deployment response configuration, and file validation evidence before production activation. Do not replace the published OE03 [CALIBRATE] placeholders with deployment-specific values; OE03 remains the canonical machine-readable detection-specification template."
+    ]
+  },
+  "validation_checklist": [
+    "Target-platform translation generated and syntax-tested for ABA-01 through ABA-03 and RSD-01 through RSD-03",
+    "ABA-01 sigma threshold, consecutive-cycle persistence, and translated rule calibrated and validated through the applicable ASCR-09 production-representative exercise",
+    "ABA-02 sigma threshold, time persistence, and translated rule calibrated and validated through the applicable ASCR-09 production-representative exercise",
+    "ABA-03 corroboration profile calibrated, deduplication behavior validated, and translated rule validated through the applicable ASCR-09 production-representative exercise",
+    "RSD-01 rolling lookback, threshold, and persistence calibrated against commissioning-period baseline",
+    "RSD-02 threshold and persistence calibrated against commissioning-period baseline",
+    "RSD-03 threshold and persistence calibrated against commissioning-period baseline",
+    "RSD-01 translated rule validated through the applicable ASCR-09 production-representative exercise",
+    "RSD-02 translated rule validated through the applicable ASCR-09 production-representative exercise",
+    "RSD-03 translated rule validated through the applicable ASCR-09 production-representative exercise",
+    "All deployment-required [CALIBRATE] values or approved profile identifiers are recorded in OE02 Calibration & Validation > Approved Calibration Record and implemented in the translated target-platform rules; the published OE03 [CALIBRATE] placeholders remain unchanged",
+    "Persistence, grouping, reset, missing-data, and deduplication semantics implemented in the target platform",
+    "analog_attestation baseline registered before ABA specifications activate",
+    "External field contracts mapped to authoritative producer fields and validated end to end",
+    "DATA-01 — ABA minimum valid analog sample count defined for each applicable analog measurement profile and validated against commissioning data before ABA production activation",
+    "DATA-02 — RSD daily-completeness profile defined, approved, and validated for RSD-01 through RSD-03, including day boundary, missing-data treatment, and denominator or source-coverage basis where applicable",
+    "False-positive and expected-detection results accepted under the deployment validation plan and tied to the FALSE_POSITIVE_ACCEPTANCE_CRITERION record below",
+    "Validation record filed in ASCR-09 evidence"
+  ],
+  "false_positive_acceptance_criterion": {
+    "status": "[CALIBRATE]",
+    "required_fields": [
+      "approved_target",
+      "measurement_window_or_denominator",
+      "rationale",
+      "owner",
+      "ascr09_validation_evidence_reference",
+      "approval_date"
+    ],
+    "record_location": "ASCR-08-OE02 Calibration & Validation and deployment response configuration"
+  },
+  "analog_attestation_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "urn:ascr:08:analog-attestation-schema:v1.0",
+    "title": "ASCR-08 Schema Annex: analog_attestation Block and ASCR-07 Planning Cycle Record Extension",
+    "description": "Top-level schema document. Use $defs references directly: analog_attestation_block for standalone block validation; ascr07_planning_cycle_extension for ASCR-07 integration validation.",
+    "$defs": {
+      "em_frequency_band": {
+        "title": "EM Spectral Density Measurement - Single Frequency Band",
+        "description": "Bandwidth-normalized power spectral density measurement for one defined frequency band at the AI accelerator package boundary. Frequency bands and measurement/resolution bandwidth are defined at commissioning and must remain consistent across planning cycles for baseline comparison.",
+        "type": "object",
+        "required": [
+          "band_label",
+          "center_frequency_mhz",
+          "bandwidth_mhz",
+          "spectral_density_dbm_per_hz"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "band_label": {
+            "type": "string",
+            "description": "Human-readable label for this frequency band, e.g. 'HBM_CLK_1200MHz', 'PCIe_8GT_4000MHz'. Must be consistent with the commissioning-period baseline band definitions stored in the edge HSM.",
+            "pattern": "^[A-Za-z0-9_\\-\\.]+$",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "center_frequency_mhz": {
+            "type": "number",
+            "description": "Center frequency of the measurement band in MHz.",
+            "minimum": 0.001,
+            "maximum": 100000
+          },
+          "bandwidth_mhz": {
+            "type": "number",
+            "description": "Bandwidth of the measurement band in MHz.",
+            "minimum": 0.001,
+            "maximum": 10000
+          },
+          "spectral_density_dbm_per_hz": {
+            "type": "number",
+            "description": "Bandwidth-normalized power spectral density measured at the near-field EM probe, expressed in dBm/Hz. Record the measurement/resolution bandwidth in the approved measurement profile so values are comparable across acquisition configurations."
+          }
+        }
+      },
+      "power_phase_measurement": {
+        "title": "Power Draw Measurement - Single Inference Phase",
+        "description": "Mean power consumption across one defined inference execution phase. Phase definitions are established at commissioning and remain consistent across planning cycles.",
+        "type": "object",
+        "required": [
+          "phase_label",
+          "mean_power_mw",
+          "sample_count",
+          "phase_duration_ms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "phase_label": {
+            "type": "string",
+            "description": "Inference phase identifier, e.g. 'tokenization', 'attention_forward', 'ffn_forward', 'sampling', 'idle'. Must match commissioning-period baseline phase definitions.",
+            "pattern": "^[A-Za-z0-9_\\-\\.]+$",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "mean_power_mw": {
+            "type": "number",
+            "description": "Mean power draw across all samples in this phase, in milliwatts, measured at the accelerator power rail.",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "peak_power_mw": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Peak instantaneous power during this phase in milliwatts. Optional; include when available from the power measurement transducer.",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "sample_count": {
+            "type": "integer",
+            "description": "Count of samples contributing to the reported aggregate. The JSON Schema minimum of 1 is a structural serialization constraint only. The minimum sample count required for operational use is deployment-specific and must be established during commissioning from the measurement method, sampling rate, noise characteristics, and required detection performance. A record below the deployment-qualified minimum is not eligible for ABA evaluation.",
+            "minimum": 1
+          },
+          "phase_duration_ms": {
+            "type": "number",
+            "description": "Total duration of this inference phase in milliseconds.",
+            "minimum": 0
+          }
+        }
+      },
+      "analog_attestation_block": {
+        "title": "analog_attestation Block",
+        "description": "Hardware-observable feature vector for one planning cycle, captured at the AI accelerator boundary and registered as an ASCR-07 planning-cycle extension.",
+        "type": "object",
+        "required": [
+          "schema_version",
+          "planning_cycle_id",
+          "accelerator_hardware_id",
+          "measurement_timestamp_utc",
+          "baseline_version_ref",
+          "measurement_quality",
+          "power_by_phase",
+          "em_spectral_density_by_band",
+          "thermal_gradient_degc",
+          "dvfs_transition_rate"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "description": "Version of this schema used to produce the block. Must match the schema version in force at the SIEM.",
+            "const": "1.0"
+          },
+          "planning_cycle_id": {
+            "type": "string",
+            "description": "Unique identifier of the ASCR-07 planning cycle record this block accompanies. Used to correlate the analog_attestation block with the corresponding decision lineage record in the SIEM.",
+            "minLength": 16,
+            "maxLength": 128
+          },
+          "accelerator_hardware_id": {
+            "type": "string",
+            "description": "Stable hardware identifier for the AI accelerator being monitored. Must match the H-BOM component identifier used by the deployment's ASCR-08 operate-phase H-BOM audit. Vendor qualification and fourth-party reassessment remain governed by ASCR-17. Typically the device serial number or the SPDM device identity certificate subject name.",
+            "minLength": 8,
+            "maxLength": 256
+          },
+          "measurement_timestamp_utc": {
+            "type": "string",
+            "description": "RFC 3339 date-time normalized to UTC and serialized with a Z suffix. Preserve the source-clock and synchronization evidence in measurement_quality for forensic correlation.",
+            "format": "date-time",
+            "pattern": "Z$"
+          },
+          "baseline_version_ref": {
+            "type": "string",
+            "description": "Version identifier of the authorized emission baseline stored in the edge HSM against which this block's measurements are compared. A baseline_version_ref that does not match the HSM's current baseline version indicates an out-of-sync configuration that must be investigated before classification.",
+            "minLength": 4,
+            "maxLength": 128
+          },
+          "measurement_quality": {
+            "type": "object",
+            "description": "Metadata about measurement timing, probe health, measurement-source independence, and evidence-integrity status for this block. Used by the SIEM to weight the block's contribution to alert rules.",
+            "required": [
+              "clock_source",
+              "clock_synchronized",
+              "probe_health_status",
+              "measurement_source_class",
+              "evidence_integrity_status"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "clock_source": {
+                "type": "string",
+                "description": "Source of the measurement timestamp. 'PTP' = IEEE 1588 Precision Time Protocol synchronized. 'NTP' = Network Time Protocol. 'LOCAL_RTC' = local hardware clock, not network synchronized. Forensic weight: PTP > NTP > LOCAL_RTC.",
+                "enum": [
+                  "PTP",
+                  "NTP",
+                  "LOCAL_RTC"
+                ]
+              },
+              "clock_synchronized": {
+                "type": "boolean",
+                "description": "Whether the clock source was confirmed synchronized at the time of measurement. False indicates the timestamp may be unreliable for forensic correlation."
+              },
+              "clock_offset_us": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "Measured clock offset from the reference time source in microseconds, if available. Include when clock_source is PTP or NTP.",
+                "minimum": -1000000,
+                "maximum": 1000000
+              },
+              "probe_health_status": {
+                "type": "string",
+                "description": "Health status of analog measurement probes for this cycle. NOMINAL means all required probes are within calibration. DEGRADED means one or more probes are degraded but usable. FAILED means one or more measurement paths failed; the affected required measurement field remains present but may be null, and the failed probe identifier must be listed in degraded_or_failed_probes.",
+                "enum": [
+                  "NOMINAL",
+                  "DEGRADED",
+                  "FAILED"
+                ]
+              },
+              "degraded_or_failed_probes": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "description": "List of probe identifiers that are in DEGRADED or FAILED state. Null if probe_health_status is NOMINAL.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "measurement_source_class": {
+                "type": "string",
+                "description": "Classifies the source of the measurement, not the integrity of the evidence chain. 'HARDWARE_DIRECT' means the applicable power, EM, and thermal measurements originate from direct hardware probes independent of the workload OS/application telemetry path. 'HYBRID' means the block combines direct hardware measurements with one or more firmware-derived values. 'FIRMWARE_ONLY' means the relevant measurements are obtained only through firmware/software interfaces. This field does not establish tamper evidence or chain-of-custody integrity.",
+                "enum": [
+                  "HARDWARE_DIRECT",
+                  "HYBRID",
+                  "FIRMWARE_ONLY"
+                ]
+              },
+              "evidence_integrity_status": {
+                "type": "string",
+                "description": "'VERIFIED' means the configured acquisition/integrity checks succeeded and the record's block_integrity_hash and ASCR-07 evidence-chain inclusion were successfully verified. 'UNVERIFIED' means the evidence was captured but integrity verification has not succeeded or has not been completed. 'NOT_AVAILABLE' means the required integrity evidence is unavailable. Measurement-source class and evidence-integrity status are independent dimensions.",
+                "enum": [
+                  "VERIFIED",
+                  "UNVERIFIED",
+                  "NOT_AVAILABLE"
+                ]
+              }
+            }
+          },
+          "power_by_phase": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Array of power draw measurements, one entry per defined inference phase. Null is permitted only when the corresponding power measurement path failed for this cycle and the failed probe is identified in measurement_quality.degraded_or_failed_probes.",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/power_phase_measurement"
+            }
+          },
+          "power_draw_mean_mw_aggregate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Aggregate mean power draw across all inference phases for this planning cycle in milliwatts. Derivation: the unweighted arithmetic mean of mean_power_mw across every entry in power_by_phase (sum of the per-phase means divided by the number of phases). This is not duration-weighted; a duration-weighted figure is a different quantity and must not be substituted. Include for SIEM rule efficiency — avoids per-phase aggregation in the SIEM query engine.",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "em_spectral_density_by_band": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Array of EM spectral density measurements, one entry per defined frequency band. Null is permitted only when the corresponding EM measurement path failed for this cycle and the failed probe is identified in measurement_quality.degraded_or_failed_probes.",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/em_frequency_band"
+            }
+          },
+          "thermal_gradient_degc": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Temperature gradient from accelerator die or package to ambient in degrees Celsius. Null is permitted only when the thermal measurement path failed for this cycle and the failed probe is identified in measurement_quality.degraded_or_failed_probes.",
+            "minimum": -10,
+            "maximum": 200
+          },
+          "thermal_ambient_degc": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Ambient temperature at the edge node enclosure at measurement time in degrees Celsius. Include where available to enable thermal gradient normalization across varying environmental conditions.",
+            "minimum": -40,
+            "maximum": 85
+          },
+          "dvfs_transition_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "DVFS state transitions per second for this planning cycle. This hybrid metric may be derived through a firmware interface and does not provide the same measurement-source independence as direct hardware probes. Null is permitted when the DVFS source is unavailable or failed. Because measurement_quality does not contain a dedicated DVFS-source-availability field, record the reason in notes or source-specific telemetry where available and treat null as not evaluable, never as zero or normal. Treat the field with reduced forensic weight when the firmware interface may be under adversary control.",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "baseline_deviation_summary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Pre-computed deviation summary produced by edge-local signal processing, comparing this block's measurements against the commissioning-period baseline. Include if the edge node has sufficient compute to perform deviation computation locally — reduces SIEM query load and enables faster alert rule evaluation.",
+            "additionalProperties": false,
+            "properties": {
+              "max_sigma_deviation": {
+                "type": "number",
+                "description": "Maximum sigma deviation observed across all fields in this block relative to the commissioning-period baseline.",
+                "minimum": 0
+              },
+              "max_sigma_field": {
+                "type": "string",
+                "description": "The field name that produced the maximum sigma deviation."
+              },
+              "alert_rule_ABA01_would_trigger": {
+                "type": "boolean",
+                "description": "Optional producer-side convenience flag indicating that this block meets the per-cycle ABA-01 deviation test under the deployment-approved calibrated ABA-01 threshold profile. Canonical detection logic does not require this flag and must not treat its absence as a non-match."
+              },
+              "alert_rule_ABA02_would_trigger": {
+                "type": "boolean",
+                "description": "Optional producer-side convenience flag indicating that this block meets the per-cycle ABA-02 deviation test under the deployment-approved calibrated ABA-02 threshold profile during a governed hold. Canonical detection logic does not require this flag and must not treat its absence as a non-match."
+              }
+            }
+          },
+          "safe_state_active": {
+            "type": "boolean",
+            "description": "Whether the edge node was in an active circuit-breaker hold (Safe-State) during the measurement window for this block. Used by Rule ABA-02 to filter Safe-State emission anomaly alerts.",
+            "default": false
+          },
+          "block_integrity_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SHA-256 over the RFC 8785 JSON Canonicalization Scheme (JCS) UTF-8 serialization of the analog_attestation object with block_integrity_hash omitted. Independent verifiers must use the identical canonicalization procedure. Used as one input to block-integrity verification and ASCR-07 evidence-chain inclusion; this field alone does not establish tamper evidence. When evidence_integrity_status is VERIFIED, block_integrity_hash must be non-null and the configured ASCR-07 evidence-chain verification must also have succeeded.",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text notes from edge-local signal processing, e.g. probe calibration reminders, known environmental anomalies (HVAC cycles, nearby equipment), or maintenance events that may explain baseline deviations. Included in the ASCR-07 evidence package.",
+            "maxLength": 1024
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "measurement_quality": {
+                  "properties": {
+                    "evidence_integrity_status": {
+                      "const": "VERIFIED"
+                    }
+                  },
+                  "required": [
+                    "evidence_integrity_status"
+                  ]
+                }
+              },
+              "required": [
+                "measurement_quality"
+              ]
+            },
+            "then": {
+              "required": [
+                "block_integrity_hash"
+              ],
+              "properties": {
+                "block_integrity_hash": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "power_by_phase": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "power_by_phase"
+              ]
+            },
+            "then": {
+              "properties": {
+                "measurement_quality": {
+                  "required": [
+                    "probe_health_status",
+                    "degraded_or_failed_probes"
+                  ],
+                  "properties": {
+                    "probe_health_status": {
+                      "const": "FAILED"
+                    },
+                    "degraded_or_failed_probes": {
+                      "type": "array",
+                      "minItems": 1
+                    }
+                  }
+                }
+              },
+              "required": [
+                "measurement_quality"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "em_spectral_density_by_band": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "em_spectral_density_by_band"
+              ]
+            },
+            "then": {
+              "properties": {
+                "measurement_quality": {
+                  "required": [
+                    "probe_health_status",
+                    "degraded_or_failed_probes"
+                  ],
+                  "properties": {
+                    "probe_health_status": {
+                      "const": "FAILED"
+                    },
+                    "degraded_or_failed_probes": {
+                      "type": "array",
+                      "minItems": 1
+                    }
+                  }
+                }
+              },
+              "required": [
+                "measurement_quality"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "thermal_gradient_degc": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "thermal_gradient_degc"
+              ]
+            },
+            "then": {
+              "properties": {
+                "measurement_quality": {
+                  "required": [
+                    "probe_health_status",
+                    "degraded_or_failed_probes"
+                  ],
+                  "properties": {
+                    "probe_health_status": {
+                      "const": "FAILED"
+                    },
+                    "degraded_or_failed_probes": {
+                      "type": "array",
+                      "minItems": 1
+                    }
+                  }
+                }
+              },
+              "required": [
+                "measurement_quality"
+              ]
+            }
+          }
+        ]
+      },
+      "ascr07_planning_cycle_extension": {
+        "title": "ASCR-07 Planning Cycle Extension - ASCR-08 analog_attestation",
+        "type": "object",
+        "required": [
+          "ascr07_record_id",
+          "analog_attestation"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ascr07_record_id": {
+            "type": "string",
+            "description": "The ASCR-07 planning cycle record identifier. Links this extension record to the base ASCR-07 record in the decision lineage store.",
+            "minLength": 16,
+            "maxLength": 128
+          },
+          "analog_attestation": {
+            "$ref": "#/$defs/analog_attestation_block",
+            "description": "Required ASCR-08 analog_attestation extension block attached to the ASCR-07 planning-cycle record. Validate it against the OE03 analog_attestation_schema and register the extension through the ASCR-07 extension mechanism before use."
+          }
+        }
+      }
+    }
+  },
+  "sigma_rules": [
+    {
+      "title": "ASCR-08 ABA-01 Silent Deviation Alert",
+      "id": "ascr08-aba-01-v1.0",
+      "status": "experimental",
+      "description": "Triggers when analog_attestation features meet the deployment-approved ABA-01 sigma threshold for the approved consecutive-cycle persistence and no corresponding digital anomaly is present in the same correlation window. Commissioning starting points are 2.0 standard deviations and three consecutive planning cycles. This is an investigation signal; adversarial attribution and full failure-code classification remain evidence-dependent.",
+      "author": "ASCR Security Operations",
+      "date": "2026-06-01",
+      "modified": "2026-09-27",
+      "references": [
+        "ASCR-08 Section 8.3 Pattern 1",
+        "ASCR-08 Section 8.4",
+        "ASCR-08 Section 7.2 (re-attestation checklist to initiate on trigger)"
+      ],
+      "tags": [
+        "ascr08.aba01",
+        "hardware.trojan",
+        "analog.attestation",
+        "mitre.atlas.AML.T0010.000"
+      ],
+      "logsource": {
+        "product": "ascr07",
+        "service": "planning_cycle_records",
+        "definition": "ASCR-07 planning cycle records with the analog_attestation block extension defined in ASCR-08-OE03-Schema-and-SOAR-Source.json, key analog_attestation_schema. Field names reference the analog_attestation_block $def in that schema."
+      },
+      "falsepositives": [
+        "Authorized workload or model-profile change before the emission baseline is updated",
+        "Approved physical maintenance or chassis-access event reflected in the H-BOM audit record",
+        "Power, cooling, or component aging that changes the emission baseline without adversarial activity; investigate rather than automatically re-baselining"
+      ],
+      "level": "high",
+      "fields": [
+        "analog_attestation.planning_cycle_id",
+        "analog_attestation.accelerator_hardware_id",
+        "analog_attestation.measurement_timestamp_utc",
+        "analog_attestation.baseline_deviation_summary.max_sigma_deviation",
+        "analog_attestation.baseline_deviation_summary.max_sigma_field",
+        "analog_attestation.measurement_quality.measurement_source_class",
+        "analog_attestation.measurement_quality.evidence_integrity_status",
+        "goal_hash",
+        "digital_anomaly_present"
+      ],
+      "response": {
+        "immediate": [
+          "Generate ASOC alert with Indeterminate classification and Type-X / Type-A candidate paths pending evidence-supported resolution of Intent, Locus, and Authority",
+          "Initiate OE01 Part 2 re-attestation workflow without waiting for a governed hold if the main playbook conditions require it",
+          "If hardware, firmware, provenance, or unauthorized configuration evidence is implicated, notify Supply Chain Operations Lead and initiate the applicable ASCR-08 Section 10.2 operate-phase H-BOM audit; if the evidence indicates a vendor or fourth-party origin, also trigger the applicable ASCR-17 vendor reassessment or fourth-party supply-chain review"
+        ],
+        "escalation": [
+          "If re-attestation B-1 (cross-attestation) fails: maintain the hold, reopen investigation, notify Incident Commander, and determine Type-A, Type-X, or another classification from the available evidence",
+          "If re-attestation B-3 (analog during Safe-State) shows anomaly: extend to physical inspection under the applicable ASCR-08 Section 10 H-BOM audit and site physical-inspection procedure; where the evidence indicates a supplier or fourth-party origin, trigger the applicable ASCR-17 vendor reassessment or fourth-party supply-chain review"
+        ]
+      },
+      "detection": {
+        "selection_analog_deviation": {
+          "analog_attestation.baseline_deviation_summary.max_sigma_deviation|gte": "[CALIBRATE]"
+        },
+        "selection_no_digital_anomaly": {
+          "digital_anomaly_present": false
+        },
+        "condition": "selection_analog_deviation and selection_no_digital_anomaly"
+      },
+      "persistence": {
+        "group_by": [
+          "analog_attestation.accelerator_hardware_id"
+        ],
+        "unit": "planning_cycle",
+        "minimum_consecutive": "[CALIBRATE]",
+        "commissioning_starting_point_sigma": 2.0,
+        "commissioning_starting_point_consecutive": 3,
+        "reset": "Reset on a fully evaluated non-qualifying planning cycle for the same accelerator. Missing data does not satisfy or reset the condition; flag the rule evaluation as incomplete."
+      }
+    },
+    {
+      "title": "ASCR-08 ABA-02 Safe-State Emission Anomaly",
+      "id": "ascr08-aba-02-v1.0",
+      "status": "experimental",
+      "description": "Triggers when analog_attestation features during an active governed hold meet the deployment-approved ABA-02 sigma threshold for the deployment-calibrated persistence period. Commissioning starting points are 1.0 standard deviation and 60 seconds. It indicates an unexplained hardware-observable condition requiring investigation before release.",
+      "author": "ASCR Security Operations",
+      "date": "2026-06-01",
+      "modified": "2026-09-27",
+      "references": [
+        "ASCR-08 Section 8.3 Pattern 3",
+        "ASCR-08 Section 8.4",
+        "ASCR-08 Section 7.2 (re-attestation B-3)"
+      ],
+      "tags": [
+        "ascr08.aba02",
+        "hardware.observable_anomaly",
+        "safe-state.anomaly",
+        "analog.attestation",
+        "mitre.atlas.AML.T0010.000"
+      ],
+      "logsource": {
+        "product": "ascr07",
+        "service": "planning_cycle_records",
+        "definition": "ASCR-07 planning cycle records with analog_attestation block extension during active Safe-State (circuit-breaker hold) periods."
+      },
+      "falsepositives": [
+        "Commissioning example starting point: thermal dissipation lag during the first 15 seconds of idle; validate and configure the exclusion window for the deployed hardware",
+        "Authorized HSM operation during a governed hold (will produce a known EM signature)",
+        "BIST (Built-in Self-Test) execution during a governed-hold maintenance window"
+      ],
+      "level": "critical",
+      "fields": [
+        "analog_attestation.planning_cycle_id",
+        "analog_attestation.accelerator_hardware_id",
+        "analog_attestation.measurement_timestamp_utc",
+        "analog_attestation.baseline_deviation_summary.max_sigma_deviation",
+        "analog_attestation.baseline_deviation_summary.max_sigma_field",
+        "analog_attestation.thermal_gradient_degc",
+        "analog_attestation.dvfs_transition_rate"
+      ],
+      "response": {
+        "immediate": [
+          "Generate ASOC alert flagging a persistent unexplained hardware-observable condition",
+          "Continue the governed hold pending the required investigation or physical inspection",
+          "Notify Incident Commander",
+          "Initiate physical hardware inspection when required by the main playbook or evidence profile"
+        ],
+        "escalation": [
+          "If physical inspection or corroborating evidence confirms unauthorized hardware or deliberate manipulation, treat Type-A as an investigative candidate and initiate the applicable ASCR-15 assessment. Classify Type-A only when the available evidence supports adversarial intent.",
+          "If evidence supports hardware fault, degradation, synchronization, configuration, or another non-adversarial systemic cause, evaluate Type-X. If evidence remains inconclusive, retain Indeterminate, maintain the governed disposition as required, and initiate the applicable ASCR-17 review where vendor or fourth-party origin is plausible."
+        ]
+      },
+      "detection": {
+        "selection_safe_state_active": {
+          "analog_attestation.safe_state_active": true
+        },
+        "selection_idle_deviation": {
+          "analog_attestation.baseline_deviation_summary.max_sigma_deviation|gte": "[CALIBRATE]"
+        },
+        "condition": "selection_safe_state_active and selection_idle_deviation"
+      },
+      "persistence": {
+        "group_by": [
+          "analog_attestation.accelerator_hardware_id"
+        ],
+        "unit": "second",
+        "minimum_duration_seconds": "[CALIBRATE]",
+        "commissioning_starting_point_sigma": 1.0,
+        "commissioning_starting_point_seconds": 60,
+        "reset": "Reset when the qualifying deviation ends or the governed hold ends. Missing measurements make the rule evaluation incomplete rather than normal."
+      }
+    },
+    {
+      "title": "ASCR-08 ABA-03 Attribution Corroboration",
+      "id": "ascr08-aba-03-v1.0",
+      "status": "experimental",
+      "description": "Corroborates an active ASCR-08 incident classification only when the analog signature matches the deployment-calibrated corroboration profile for that classification. The profile identifies expected field or fields, direction or pattern, minimum site-calibrated deviation, and contextual qualifiers. This specification is informational and must not create a hold by itself. ABA-03 evaluates only a resolved ASCR-08 failure code. An Indeterminate classification does not satisfy this trigger.",
+      "author": "ASCR Security Operations",
+      "date": "2026-06-01",
+      "modified": "2026-09-27",
+      "references": [
+        "ASCR-08 Section 8.3 Pattern 2",
+        "ASCR-08 Section 8.4"
+      ],
+      "tags": [
+        "ascr08.aba03",
+        "attribution.corroboration",
+        "evidence.package",
+        "analog.attestation",
+        "mitre.atlas.inherits-from-corroborated-failure-code"
+      ],
+      "logsource": {
+        "product": "ascr07",
+        "service": "planning_cycle_records"
+      },
+      "falsepositives": [
+        "Benign workload conditions that match an inadequately calibrated corroboration profile. Validate and recalibrate the profile; do not treat a match as independent attribution proof."
+      ],
+      "level": "informational",
+      "fields": [
+        "analog_attestation.planning_cycle_id",
+        "analog_attestation.accelerator_hardware_id",
+        "incident_id",
+        "incident_classification_code",
+        "corroboration_profile_id",
+        "analog_corroboration_profile_match",
+        "analog_attestation.baseline_deviation_summary.max_sigma_deviation",
+        "analog_attestation.baseline_deviation_summary.max_sigma_field"
+      ],
+      "response": {
+        "immediate": [
+          "Add a deduplicated corroboration record to the ASCR-07 incident evidence package",
+          "Flag the record for analyst review before inclusion in a regulatory notification package",
+          "No hold action; informational corroboration only"
+        ]
+      },
+      "detection": {
+        "selection_active_incident_classification": {
+          "incident_classification_active": true,
+          "incident_classification_code|exists": true,
+          "incident_id|exists": true
+        },
+        "selection_profile_match": {
+          "analog_corroboration_profile_match": true,
+          "corroboration_profile_id|exists": true
+        },
+        "condition": "selection_active_incident_classification and selection_profile_match"
+      },
+      "deduplication": {
+        "key": [
+          "incident_id",
+          "analog_attestation.accelerator_hardware_id",
+          "corroboration_profile_id"
+        ],
+        "emit": "one corroboration record per incident_id + accelerator + corroboration profile unless the approved profile state materially changes",
+        "reset": "new incident_id, different accelerator, different profile, or material profile-state change"
+      }
+    },
+    {
+      "title": "ASCR-08 RSD-01 Action-Type Reward Mean Shift",
+      "id": "ascr08-rsd-01-v1.0",
+      "status": "experimental",
+      "description": "Triggers when the deployment-calibrated rolling reward-signal mean for a specific action type deviates from the commissioning-period baseline by the approved sigma threshold for the calibrated consecutive-day period. Commissioning starting points are a 30-day rolling lookback, 1.5 standard deviations, and 10 consecutive days. [CALIBRATE] This is an anomaly signal; it does not independently establish manipulation or adversarial cause.",
+      "author": "ASCR Security Operations",
+      "date": "2026-06-01",
+      "modified": "2026-09-27",
+      "references": [
+        "ASCR-08 Section 9.3",
+        "Chapter 4 (physical feedback loop poisoning)"
+      ],
+      "tags": [
+        "ascr08.rsd01",
+        "reward.poisoning",
+        "training.data.integrity",
+        "continuous.learning",
+        "mitre.atlas.AML.T0020"
+      ],
+      "logsource": {
+        "product": "ascr_training_provenance",
+        "service": "reward_signal_log",
+        "definition": "Training provenance log as specified in Chapter 4. Records every reward signal, sensor reading, and policy update event with tamper-evident integrity controls."
+      },
+      "falsepositives": [
+        "Seasonal operational changes legitimately shifting reward distributions (document seasonal baselines at commissioning if applicable)",
+        "Authorized process changes that alter the expected reward profile (update the baseline only through ASCR-03 Tier 2 authorization under the ASCR-10 change-control process, with documented technical justification before the change goes live)",
+        "Hardware wear on sensors producing gradual drift (will produce slow monotonic shift; review against X-P-M Calibration Decay pattern)"
+      ],
+      "level": "high",
+      "fields": [
+        "action_type",
+        "reward_signal_rolling_mean",
+        "reward_signal_baseline_mean",
+        "reward_signal_rolling_mean_sigma_deviation",
+        "sensor_ids_feeding_action_type",
+        "consecutive_days_in_alert",
+        "rsd_evaluation_day_complete"
+      ],
+      "response": {
+        "immediate": [
+          "Generate ASOC alert for affected action_type",
+          "Recommend Tier 1 or Tier 2 sensor audit (per ASCR-08 Section 9.2) for sensors feeding this action type",
+          "Notify AI/ML Engineering Lead"
+        ],
+        "escalation": [
+          "If sensor audit finds manipulation: initiate policy rollback per ASCR-08 Section 9.4",
+          "If the sensor audit is clean, evaluate X-P-M Calibration Decay or another technically supported non-adversarial cause. Do not update the baseline until the deviation is technically explained, unresolved compromise has been addressed, and the change is authorized through ASCR-03 Tier 2 under the ASCR-10 change-control process."
+        ]
+      },
+      "detection": {
+        "selection_reward_mean_shift": {
+          "reward_signal_rolling_mean_sigma_deviation|gte": "[CALIBRATE]",
+          "action_type|exists": true
+        },
+        "condition": "selection_reward_mean_shift and selection_day_complete",
+        "selection_day_complete": {
+          "rsd_evaluation_day_complete": true
+        }
+      },
+      "aggregation": {
+        "rolling_lookback_days": "[CALIBRATE]",
+        "commissioning_starting_point_lookback_days": 30
+      },
+      "persistence": {
+        "group_by": [
+          "action_type"
+        ],
+        "unit": "day",
+        "minimum_consecutive": "[CALIBRATE]",
+        "commissioning_starting_point_sigma": 1.5,
+        "commissioning_starting_point_days": 10,
+        "counter_field": "consecutive_days_in_alert",
+        "reset": "Reset only after a complete non-qualifying day for the same action_type that satisfies the deployment-approved RSD_DAILY_COMPLETENESS_PROFILE. Missing or incomplete source data makes evaluation incomplete and must not reset persistence."
+      }
+    },
+    {
+      "title": "ASCR-08 RSD-02 Reward Variance Compression",
+      "id": "ascr08-rsd-02-v1.0",
+      "status": "experimental",
+      "description": "Triggers when reward-signal variance for a specific action type falls below 40% of the commissioning-period baseline variance for the calibrated consecutive-day period. The 0.4 ratio and starting persistence value require site calibration. [CALIBRATE] This is an anomaly signal; it does not independently establish manipulation or adversarial cause.",
+      "author": "ASCR Security Operations",
+      "date": "2026-06-01",
+      "modified": "2026-09-27",
+      "references": [
+        "ASCR-08 Section 9.3",
+        "Chapter 4 (physical feedback loop poisoning)"
+      ],
+      "tags": [
+        "ascr08.rsd02",
+        "reward.poisoning",
+        "variance.compression",
+        "sensor.manipulation",
+        "mitre.atlas.AML.T0020"
+      ],
+      "logsource": {
+        "product": "ascr_training_provenance",
+        "service": "reward_signal_log"
+      },
+      "falsepositives": [
+        "Operational mode changes that legitimately reduce task variety (e.g., system running a single repetitive task during a production campaign)",
+        "Scheduled maintenance windows where only specific actions are performed",
+        "Commissioning example starting point: treat the first 30 days of a newly deployed agent as a potentially non-representative diversity period; validate the adopted period for the deployment"
+      ],
+      "level": "high",
+      "fields": [
+        "action_type",
+        "reward_signal_variance_current",
+        "reward_signal_variance_baseline",
+        "reward_signal_variance_ratio",
+        "sensor_ids_feeding_action_type",
+        "consecutive_days_in_alert",
+        "rsd_evaluation_day_complete"
+      ],
+      "response": {
+        "immediate": [
+          "Generate ASOC alert for affected action_type",
+          "Initiate immediate Tier 1 sensor audit for sensors feeding this action type",
+          "Apply provisional policy freeze for the affected action type pending audit results",
+          "Notify AI/ML Engineering Lead and Incident Commander"
+        ],
+        "escalation": [
+          "If sensor audit finds manipulation: initiate policy rollback per ASCR-08 Section 9.4",
+          "Provisional policy freeze remains in effect until sensor audit is complete and clean"
+        ]
+      },
+      "detection": {
+        "selection_variance_compression": {
+          "reward_signal_variance_ratio|lt": "[CALIBRATE]",
+          "action_type|exists": true
+        },
+        "condition": "selection_variance_compression and selection_day_complete",
+        "selection_day_complete": {
+          "rsd_evaluation_day_complete": true
+        }
+      },
+      "persistence": {
+        "group_by": [
+          "action_type"
+        ],
+        "unit": "day",
+        "minimum_consecutive": "[CALIBRATE]",
+        "commissioning_starting_point_ratio": 0.4,
+        "commissioning_starting_point_days": 7,
+        "counter_field": "consecutive_days_in_alert",
+        "reset": "Reset only after a complete non-qualifying day for the same action_type that satisfies the deployment-approved RSD_DAILY_COMPLETENESS_PROFILE. Missing or incomplete source data makes evaluation incomplete and must not reset persistence."
+      }
+    },
+    {
+      "title": "ASCR-08 RSD-03 Independent Metric Divergence",
+      "id": "ascr08-rsd-03-v1.0",
+      "status": "experimental",
+      "description": "Triggers when the rolling correlation between the reward metric and an approved independent operational quality metric falls below 0.6 for the calibrated consecutive-day period. The 0.6 floor and starting persistence value require site calibration. [CALIBRATE] This is an anomaly signal; it does not independently establish manipulation or adversarial cause.",
+      "author": "ASCR Security Operations",
+      "date": "2026-06-01",
+      "modified": "2026-09-27",
+      "references": [
+        "ASCR-08 Section 9.3",
+        "Chapter 4 (reward hacking)"
+      ],
+      "tags": [
+        "ascr08.rsd03",
+        "reward.hacking",
+        "policy.drift",
+        "quality.metric.divergence",
+        "mitre.atlas.AML.T0020"
+      ],
+      "logsource": {
+        "product": "ascr_training_provenance",
+        "service": "reward_signal_log",
+        "definition": "Training provenance log cross-joined with the independent operational quality metric log. The independent quality metric must be defined in the commissioning-period monitoring specification and must be logged independently of the reward signal computation pipeline."
+      },
+      "falsepositives": [
+        "Commissioning example starting point: treat the first 60 days as a possible policy-stabilization period; validate the adopted period for the deployment",
+        "Legitimate environmental changes that affect quality metric independently of reward (e.g., facility layout changes affecting throughput metrics)",
+        "Independent quality metric sensor failure (correlation drop with no reward change); review the independent quality metric log for data gaps before concluding reward hacking"
+      ],
+      "level": "high",
+      "fields": [
+        "independent_quality_metric_id",
+        "reward_quality_correlation_rolling",
+        "reward_signal_mean_rolling",
+        "independent_quality_metric_mean_rolling",
+        "consecutive_days_in_alert",
+        "rsd_evaluation_day_complete"
+      ],
+      "response": {
+        "immediate": [
+          "Generate ASOC alert",
+          "Recommend policy rollback to last ASCR-10 checkpoint",
+          "Initiate reward function review with AI/ML Engineering Lead",
+          "Verify independent quality metric sensor is operational (rule out sensor failure)"
+        ],
+        "escalation": [
+          "If reward function review confirms hacking: initiate policy rollback per ASCR-08 Section 9.4",
+          "If sensor manipulation suspected: initiate Tier 1 sensor audit per ASCR-08 Section 9.2"
+        ]
+      },
+      "detection": {
+        "selection_correlation_drop": {
+          "reward_quality_correlation_rolling|lt": "[CALIBRATE]",
+          "independent_quality_metric_id|exists": true
+        },
+        "condition": "selection_correlation_drop and selection_day_complete",
+        "selection_day_complete": {
+          "rsd_evaluation_day_complete": true
+        }
+      },
+      "persistence": {
+        "group_by": [
+          "independent_quality_metric_id"
+        ],
+        "unit": "day",
+        "minimum_consecutive": "[CALIBRATE]",
+        "commissioning_starting_point_correlation_floor": 0.6,
+        "commissioning_starting_point_days": 14,
+        "counter_field": "consecutive_days_in_alert",
+        "reset": "Reset only after a complete non-qualifying day for the same metric that satisfies the deployment-approved RSD_DAILY_COMPLETENESS_PROFILE. Missing or incomplete source data makes evaluation incomplete and must not reset persistence."
+      }
+    }
+  ],
+  "atlas_mapping_note": "ABA detection specifications use the current ATLAS mappings selected by the ASCR-08 threat-model owner. RSD-01 through RSD-03 retain technique ID AML.T0020, whose current formal name is Training Data Poisoning. Re-verify technique identifiers and formal technique names against the current MITRE ATLAS release during the blueprint reference audit; do not infer a technique solely from an analog anomaly.",
+  "read_me": {
+    "format": ".json",
+    "version": "1.0 — June 2026",
+    "consolidates": "Legacy ASCR-08-CF3 analog_attestation extension schema and ASCR-08-CF5 six vendor-neutral detection specifications, retained under current OE03 keys for traceability and machine-readable use.",
+    "scope": "Canonical machine-readable source for the ASCR-08 analog_attestation extension schema and six vendor-neutral detection specifications ABA-01 to ABA-03 and RSD-01 to RSD-03. Translate the detection specifications into the target platform query language before deployment.",
+    "precedence": "The ASCR-08 main playbook governs overall. ASCR-07 governs the base planning-cycle record and extension-registration contract. This file governs the ASCR-08 analog_attestation extension schema and detection-specification logic over ASCR-08-OE02-Technical-Registries-Reference.xlsx. Physical Safe-State definitions are governed through ASCR-03 Section 6 and applicable safety engineering; ASCR-04 supplies runtime enforcement and KQP/TKQ parameters where used. Statutory deadlines and role allocations are governed by the law in force.",
+    "relationship_to_sibling_oe_files": "ASCR-08-OE01-Operational-Forms-and-Registers.docx contains the human-executed operational forms and registers. ASCR-08-OE02-Technical-Registries-Reference.xlsx is the human-readable audit view of this canonical machine-readable source. The ASCR-08 main playbook governs overall.",
+    "change_control": "This file versions in lockstep with the ASCR-08 main playbook and OE02. Do not overwrite prior controlled releases. All six translated rules require production-representative validation, and all [CALIBRATE] values or profiles require site calibration and approval, before production activation.",
+    "scope_limitation": "Machine-readable technical source for the ASCR-08 analog_attestation extension schema and vendor-neutral detection specifications. Detection specifications require target-platform translation, documented aggregation/persistence semantics, calibration where marked, and production-representative validation before activation. Use the explicit validation entry points in validation_entry_point_note; do not validate the package root as an incident record. Validation execution environment, TVA procedure identifiers, cadences, and event triggers are governed by the current ASCR-09 and its procedure cards; this file does not impose a standing live-production TVA requirement or a universal 90-day cadence on capability-specific TVAs.",
+    "canonical_filename": "ASCR-08-OE03-Schema-and-SOAR-Source.json"
+  },
+  "rule_format": "ASCR vendor-neutral detection specification; target-platform translation and validation required before production use",
+  "evaluation_contract": {
+    "principle": "Producer-computed deviation summaries and producer convenience flags are optional. Canonical detection selection is based on the approved deployment profile and authoritative evidence, not on the presence of a producer convenience flag.",
+    "producer_computed_fields": [
+      "analog_attestation.baseline_deviation_summary.max_sigma_deviation",
+      "analog_attestation.baseline_deviation_summary.max_sigma_field",
+      "analog_attestation.baseline_deviation_summary.alert_rule_ABA01_would_trigger",
+      "analog_attestation.baseline_deviation_summary.alert_rule_ABA02_would_trigger"
+    ],
+    "minimum_valid_sample_count": "Deployment-qualified value or profile identifier required before production use for ABA evaluation. No universal Blueprint default applies; records below the approved minimum are not eligible for ABA evaluation.",
+    "requirements": [
+      "If analog_attestation.baseline_deviation_summary or max_sigma_deviation is absent, the translated rule must compute the approved deviation metric from authoritative raw analog telemetry and the registered baseline.",
+      "If the required deviation computation cannot be completed, return NOT_EVALUABLE / evaluation incomplete. Absence must never evaluate as a non-match or zero deviation.",
+      "Optional producer convenience flags alert_rule_ABA01_would_trigger and alert_rule_ABA02_would_trigger are never required by canonical detection selection.",
+      "Computed values must carry a documented baseline/profile identifier and time-correlation basis.",
+      "Missing required external fields or failed measurement paths must not be silently treated as a normal or zero value.",
+      "safe_state_active is an ASCR-08 measurement-context field and must reflect the governed hold state enforced at the execution boundary, not an inferred analog state.",
+      "Translated ABA logic must treat a record below the deployment-qualified minimum valid analog sample count as not evaluable for that event, not as a normal or zero measurement.",
+      "RSD-01, RSD-02, and RSD-03 must evaluate rsd_evaluation_day_complete. Only a day satisfying the deployment-approved RSD_DAILY_COMPLETENESS_PROFILE may qualify as a persistence or reset day; missing or incomplete source data is not equivalent to a non-qualifying day and must not reset persistence."
+    ],
+    "rsd_daily_completeness_profile": "RSD_DAILY_COMPLETENESS_PROFILE defines the deployment-approved source coverage, qualifying event count or observation completeness, day-boundary convention, missing-data treatment, and denominator where applicable for one qualifying RSD evaluation day."
+  },
+  "external_field_contracts": {
+    "digital_anomaly_present": {
+      "type": "boolean",
+      "source": "ASCR-07 / approved event-correlation translation",
+      "authority": "ASCR-07 digital telemetry and deployment detection mapping",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "semantics": "True when a corresponding digital anomaly or blocking verification signal exists for the correlation window; False only after all configured digital sources were successfully evaluated. Missing is not equivalent to False.",
+      "required_by_rules": [
+        "ascr08-aba-01-v1.0"
+      ]
+    },
+    "incident_id": {
+      "type": "string",
+      "source": "ASCR-08 Incident Header / incident management system",
+      "authority": "current ASCR-08 incident record",
+      "required_by_rules": [
+        "ascr08-aba-03-v1.0"
+      ]
+    },
+    "incident_classification_active": {
+      "type": "boolean",
+      "source": "ASCR-08 incident record / incident management system",
+      "authority": "ASCR-08 current incident state",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "required_by_rules": [
+        "ascr08-aba-03-v1.0"
+      ]
+    },
+    "incident_classification_code": {
+      "type": "string",
+      "source": "ASCR-08 Classification History",
+      "authority": "ASCR-08 current recorded failure code",
+      "reference": "Main playbook Section 1 taxonomy. For ABA-03, this field is populated only when a resolved three-character ASCR-08 failure code has been recorded. It must be absent while the current classification remains Indeterminate.",
+      "required_by_rules": [
+        "ascr08-aba-03-v1.0"
+      ]
+    },
+    "analog_corroboration_profile_match": {
+      "type": "boolean",
+      "source": "approved target-platform profile evaluator",
+      "authority": "deployment-calibrated ABA-03 corroboration profile",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "semantics": "True only when the current analog signature matches the approved profile for the active incident classification, including field, direction/pattern, minimum calibrated deviation, and contextual qualifiers.",
+      "required_by_rules": [
+        "ascr08-aba-03-v1.0"
+      ]
+    },
+    "corroboration_profile_id": {
+      "type": "string",
+      "source": "deployment calibration record",
+      "authority": "approved ABA-03 profile registry",
+      "required_by_rules": [
+        "ascr08-aba-03-v1.0"
+      ]
+    },
+    "rsd_evaluation_day_complete": {
+      "type": "boolean",
+      "source": "deployment-approved RSD daily-completeness evaluator",
+      "authority": "RSD_DAILY_COMPLETENESS_PROFILE in OE02 Approved Calibration Record",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "semantics": "True only when the deployment-approved RSD daily-completeness criterion has been satisfied for the applicable action type or metric. Missing or incomplete source data is not equivalent to a non-qualifying day and must not reset persistence.",
+      "required_by_rules": [
+        "ascr08-rsd-01-v1.0",
+        "ascr08-rsd-02-v1.0",
+        "ascr08-rsd-03-v1.0"
+      ]
+    },
+    "reward_signal_rolling_mean_sigma_deviation": {
+      "type": "number",
+      "source": "reward-monitoring pipeline",
+      "authority": "ASCR-10/commissioning baseline",
+      "required_by_rules": [
+        "ascr08-rsd-01-v1.0"
+      ]
+    },
+    "reward_signal_variance_ratio": {
+      "type": "number",
+      "source": "reward-monitoring pipeline",
+      "authority": "ASCR-10/commissioning baseline",
+      "required_by_rules": [
+        "ascr08-rsd-02-v1.0"
+      ]
+    },
+    "reward_quality_correlation_rolling": {
+      "type": "number",
+      "source": "reward-monitoring pipeline",
+      "authority": "ASCR-10/commissioning baseline",
+      "required_by_rules": [
+        "ascr08-rsd-03-v1.0"
+      ]
+    },
+    "action_type": {
+      "type": "string",
+      "source": "ASCR-07 / action telemetry",
+      "authority": "deployment action taxonomy",
+      "required_by_rules": [
+        "ascr08-rsd-01-v1.0",
+        "ascr08-rsd-02-v1.0"
+      ]
+    },
+    "independent_quality_metric_id": {
+      "type": "string",
+      "source": "commissioning monitoring specification",
+      "authority": "approved independent quality metric registry",
+      "required_by_rules": [
+        "ascr08-rsd-03-v1.0"
+      ]
+    },
+    "consecutive_days_in_alert": {
+      "type": "integer",
+      "source": "target-platform persistence evaluator or approved producer",
+      "authority": "translated rule implementation",
+      "minimum": 0,
+      "required_by_rules": [
+        "ascr08-rsd-01-v1.0",
+        "ascr08-rsd-02-v1.0",
+        "ascr08-rsd-03-v1.0"
+      ]
+    }
+  },
+  "approved_calibration_record": {
+    "authoritative_location": "ASCR-08-OE02-Technical-Registries-Reference.xlsx > Calibration & Validation > Approved Calibration Record",
+    "deployment_profile_reference_location": "ASCR-08-OE01-Operational-Forms-and-Registers.docx > Part 1 > Deployment response configuration",
+    "rule": "Deployment-approved values and profile identifiers are recorded in the OE02 Approved Calibration Record. OE01 carries the applicable deployment profile/reference. Published OE03 remains the canonical machine-readable detection-specification template and retains [CALIBRATE] placeholders rather than becoming the deployment calibration ledger."
+  },
+  "validation_entry_point_note": "The root JSON object is a package container, not an instance-validation schema. Validate a standalone analog_attestation block against analog_attestation_schema/$defs/analog_attestation_block and an ASCR-07 extension instance against analog_attestation_schema/$defs/ascr07_planning_cycle_extension. Do not infer a root $ref. JSON Schema validators differ in how strictly they enforce format: date-time; for measurement_timestamp_utc the explicit pattern Z$ and the selected validation entry point are normative.",
+  "ascr09_validation_boundary": {
+    "governing_source": "Current ASCR-09 and its operational extensions",
+    "rule": "ASCR-09 governs the current TVA procedure inventory, identifiers, approved execution environments, cadences, and event triggers. ASCR-08 requires applicable production-representative validation before production activation but does not create a standing live-production validation requirement or a universal 90-day cadence for capability-specific TVA procedures.",
+    "trace_continuity": "Where gateway, W3C Trace Context, or cross-boundary correlation continuity requires technical validation, use the current ASCR-09 gateway/trace-continuity procedure. In Version 1.0 this is TVA-MCP-01; TVA-01 remains the decision-event/schema prerequisite gate."
+  }
+}
