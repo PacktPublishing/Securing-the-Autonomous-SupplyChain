@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascr:16:lineage-token-schema:1.0",
+  "title": "ASCR-16 Attestation Lineage Token",
+  "description": "Cryptographically signed token generated for each governed cloud model-registry dispatch at EP-17. Binds the dispatched artifact to exact retained cloud provisioning evidence, the authorized edge attestation reference state, current ASCR-10 authorization, pipeline identity, dispatch time, and a fresh delivery nonce. Verified at EP-18 and EP-19 before forwarding or edge TEE admission.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_hash",
+    "device_class",
+    "firmware_baseline",
+    "ascr10_ref",
+    "cloud_attest_timestamp",
+    "cloud_attestation_ref",
+    "cloud_attestation_hash",
+    "cloud_provisioning_binding_digest",
+    "dispatch_timestamp",
+    "pipeline_svid",
+    "nonce",
+    "attestation_profile",
+    "signing_profile",
+    "signatures"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "ascr16-lineage-v1.0",
+      "description": "Schema version identifier for the ASCR-16 lineage-token contract. It prevents cross-version token-verification ambiguity. ASCR-07 evidence may correlate to an ASCR-16 token and record the applicable token/schema reference, but ASCR-07 and ASCR-16 version independently and are not required to use identical schema-version identifiers."
+    },
+    "artifact_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 hex digest of the model artifact binary as dispatched from the cloud registry — computed over the wire format before any decompression or format conversion. EP-19 recomputes this hash over the received binary and must match exactly. A mismatch fires ARTIFACT_MODIFIED_IN_TRANSIT."
+    },
+    "device_class": {
+      "type": "string",
+      "description": "Target edge device class. Value must exactly match a device-class identifier registered for the deployment in ASCR-03 Section 2. EP-19 rejects a mismatch with the instantiating device class.",
+      "examples": [
+        "NVIDIA_Jetson_AGX_Orin",
+        "NXP_iMX9",
+        "Qualcomm_QCS8550"
+      ]
+    },
+    "firmware_baseline": {
+      "type": "string",
+      "description": "Expected firmware version string for the target device class. Used by EP-19 to confirm the edge device firmware has not drifted from the authorized baseline.",
+      "examples": [
+        "v35.3.1",
+        "2.8.0-lts"
+      ]
+    },
+    "expected_pcrs": {
+      "type": "object",
+      "description": "Expected TPM PCR reference values for the authorized tpm_pcr deployment state. Security-relevant PCR identifiers are defined by attestation_profile.security_relevant_set and compared by exact approved value under the selected pcr_bank. A required mismatch fires EDGE_ATTESTATION_REFERENCE_MISMATCH and rejects admission unless a governed revised reference state and newly issued lineage token are verified on a new attempt.",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^0x(?:[A-Fa-f0-9]{64}|[A-Fa-f0-9]{96})$",
+        "description": "TPM PCR digest as a hex string prefixed with 0x. Length must match the pcr_bank declared in attestation_profile."
+      },
+      "examples": [
+        {
+          "PCR0": "0xA1B2C3D4E5F67890A1B2C3D4E5F67890A1B2C3D4E5F67890A1B2C3D4E5F67890",
+          "PCR4": "0xC3D4E5F67890A1B2C3D4E5F67890A1B2C3D4E5F67890A1B2C3D4E5F678901234"
+        }
+      ],
+      "propertyNames": {
+        "pattern": "^PCR(?:[0-9]|[1-9][0-9])$"
+      },
+      "minProperties": 1
+    },
+    "ascr10_ref": {
+      "type": "string",
+      "description": "ASCR-10 change record ID authorizing this model artifact version for this device class. EP-19 retrieves the referenced record and verifies status == AUTHORIZED and authorization_valid_until > current_timestamp. A non-resolving reference fires PROVENANCE_MISSING and is an ASCR-08 trigger regardless of whether the token is otherwise valid — it may indicate token forgery or authorization database inconsistency.",
+      "examples": [
+        "CR-2026-0047",
+        "CR-2026-0112-EMERG"
+      ]
+    },
+    "cloud_attest_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp at which the referenced cloud provisioning attestation evidence was generated. This is provenance metadata used to identify and correlate the provisioning state bound to the lineage token; it is not the start timestamp for runtime-path or model-delivery transit-latency calculation.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$"
+    },
+    "cloud_attestation_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable evidence identifier or immutable content reference for the exact retained cloud provisioning attestation evidence on which this lineage token relies. EP-19 must resolve this reference before admission."
+    },
+    "cloud_attestation_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 digest of the exact retained cloud provisioning attestation evidence bytes referenced by cloud_attestation_ref, computed before parsing, normalization, or transformation. The digest is covered by the lineage-token signatures; EP-19 recomputes and compares it before admission."
+    },
+    "cloud_provisioning_binding_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 digest of the RFC 8785 JCS representation of the ASCR-16 cloud-provisioning binding object: schema_version, artifact_hash, device_class, firmware_baseline, ascr10_ref, attestation_profile, the selected expected reference state (expected_pcrs or expected_measurements), cloud_attestation_ref, and cloud_attest_timestamp. EP-19 reconstructs that object from the signed token, recomputes the digest, and requires exact equality with this field. The validated cloud attestation evidence, or an equivalent signed provisioning-binding record generated inside the attested cloud environment, must cryptographically bind the same digest."
+    },
+    "dispatch_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp at which EP-17 released this signed lineage token and associated model artifact for the governed delivery. Where model-delivery duration is measured, this signed field is the origin timestamp.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$"
+    },
+    "pipeline_svid": {
+      "type": "string",
+      "description": "SPIFFE SVID of the cloud pipeline component that generated this per-delivery token. The SVID is authenticated through the applicable SPIFFE trust bundle and admission policy. Application-signing keys are registered separately and bound to this SVID; the SPIFFE trust bundle is not the application-signing-key registry.",
+      "examples": [
+        "spiffe://cloud.example.com/model-registry/dispatch-pipeline"
+      ]
+    },
+    "nonce": {
+      "type": "string",
+      "description": "Cryptographically random nonce, minimum 128 bits, generated uniquely for each lineage-token delivery and cryptographically covered by the token signature. EP-18 and EP-19 must atomically reject reuse of a replay key already consumed in the applicable enforcement-point replay-cache namespace. A successful re-dispatch requires a newly signed lineage token containing a fresh nonce. Replay state is retained at least through the referenced ASCR-10 authorization validity period; authorization currency and revocation remain governed by the current ASCR-10 record.",
+      "minLength": 32,
+      "examples": [
+        "a3f7c29e814b5d60f3a1e8c94b27d05f"
+      ],
+      "pattern": "^[a-f0-9]{32,}$"
+    },
+    "attestation_profile": {
+      "type": "object",
+      "description": "Device-class-specific attestation configuration evaluated by the Attestation Abstraction Layer (AAL) at EP-19. Defines the device-class attestation mechanism, security-relevant measurement identifiers, and verification policy. TPM-based profiles use PCR identifiers plus expected_pcrs; non-TPM platform-attestation profiles use profile-defined identifiers plus expected_measurements.",
+      "required": [
+        "device_class_profile_ref",
+        "measurement_type",
+        "security_relevant_set"
+      ],
+      "properties": {
+        "device_class_profile_ref": {
+          "type": "string",
+          "description": "Reference to the device-class attestation profile registered in the AAL. The profile defines the attestation mechanism and approved exact measurement values or explicitly approved reference-value sets for the device class."
+        },
+        "security_relevant_set": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of measurement identifiers that are security-relevant for this deployment. For tpm_pcr profiles, these are PCR register identifiers; for platform_attestation profiles, they are profile-defined measurement identifiers. Failure of any required security-relevant measurement fires EDGE_ATTESTATION_REFERENCE_MISMATCH and halts admission. Deviations outside this set may be handled only as degraded conditions where the governing AAL policy explicitly permits that disposition.",
+          "examples": [
+            [
+              "PCR0",
+              "PCR4",
+              "PCR7"
+            ]
+          ],
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "measurement_type": {
+          "type": "string",
+          "enum": [
+            "tpm_pcr",
+            "platform_attestation"
+          ],
+          "description": "Attestation measurement model used by the AAL profile."
+        },
+        "pcr_bank": {
+          "type": "string",
+          "enum": [
+            "sha256",
+            "sha384"
+          ],
+          "description": "Required for tpm_pcr profiles. Identifies the TPM PCR bank used for expected_pcrs."
+        }
+      },
+      "additionalProperties": false
+    },
+    "signing_profile": {
+      "type": "string",
+      "const": "RFC8785-JCS-v1",
+      "description": "Normative lineage-token signature-input profile. Construct signing_view as a deep copy of the complete token, remove only signatures.classical.value and signatures.pqc.value, retain both signature algorithm and key_id fields plus every other member, and sign ASCII(\"ASCR16-LINEAGE-v1\") || 0x00 || UTF8(RFC8785_JCS(signing_view)). Both Ed25519 and ML-DSA-65 sign exactly the same bytes."
+    },
+    "multi_tenant_cloud_ref": {
+      "type": "string",
+      "description": "OPTIONAL supplementary provider/platform reference for multi-tenant deployments. It does not replace required cloud_attestation_ref, cloud_attestation_hash, or cloud_provisioning_binding_digest. Use it to retain provider/platform context needed to resolve or interpret the exact cloud attestation evidence and fourth-party risk relationship."
+    },
+    "signatures": {
+      "type": "object",
+      "description": "Signature envelope for the canonical ASCR-16 lineage-token signature input. Both Ed25519 and ML-DSA-65 sign the identical bytes defined by signing_profile=RFC8785-JCS-v1. Construct signing_view by removing only the two signature value members while retaining signature algorithm and key_id fields and all other token members. The deployment-approved cryptographic-transition profile in force for the delivery defines which signatures are required. For vendor-supplied pipelines, the applicable executed ASCR-11 contractual terms must incorporate or reference that approved profile; for operator-managed pipelines, the profile is governed through the operator's approved internal cryptographic policy.",
+      "required": [
+        "classical",
+        "pqc"
+      ],
+      "properties": {
+        "classical": {
+          "type": "object",
+          "required": [
+            "algorithm",
+            "key_id",
+            "value"
+          ],
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "const": "Ed25519",
+              "description": "Classical signature algorithm used during PQC transition period."
+            },
+            "value": {
+              "type": "string",
+              "description": "Ed25519 Base64url-encoded signature without padding over ASCII(\"ASCR16-LINEAGE-v1\") || 0x00 || UTF8(RFC8785_JCS(signing_view)), where signing_view is the complete token with only signatures.classical.value and signatures.pqc.value removed.",
+              "pattern": "^[A-Za-z0-9_-]{86}$"
+            },
+            "key_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Stable identifier or public-key thumbprint for the application-signing public key registered to pipeline_svid, including its algorithm and validity interval."
+            }
+          },
+          "additionalProperties": false
+        },
+        "pqc": {
+          "type": "object",
+          "required": [
+            "algorithm",
+            "key_id",
+            "value"
+          ],
+          "properties": {
+            "algorithm": {
+              "type": "string",
+              "const": "ML-DSA-65",
+              "description": "Post-quantum signature algorithm conforming to FIPS 204. Provides quantum-resistant integrity assurance for the token."
+            },
+            "value": {
+              "type": "string",
+              "description": "ML-DSA-65 Base64url-encoded signature without padding over ASCII(\"ASCR16-LINEAGE-v1\") || 0x00 || UTF8(RFC8785_JCS(signing_view)), where signing_view is the complete token with only signatures.classical.value and signatures.pqc.value removed.",
+              "pattern": "^[A-Za-z0-9_-]{4412}$"
+            },
+            "key_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Stable identifier or public-key thumbprint for the application-signing public key registered to pipeline_svid, including its algorithm and validity interval."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "expected_measurements": {
+      "type": "object",
+      "description": "Expected exact reference values for non-TPM platform_attestation profiles. Keys are measurement identifiers from attestation_profile.security_relevant_set; values are profile-defined exact reference values. A required mismatch fires EDGE_ATTESTATION_REFERENCE_MISMATCH.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "attestation_profile": {
+            "properties": {
+              "measurement_type": {
+                "const": "tpm_pcr"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_pcrs"
+        ],
+        "properties": {
+          "attestation_profile": {
+            "required": [
+              "pcr_bank"
+            ]
+          }
+        },
+        "not": {
+          "required": [
+            "expected_measurements"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "attestation_profile": {
+            "properties": {
+              "measurement_type": {
+                "const": "platform_attestation"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_measurements"
+        ],
+        "not": {
+          "required": [
+            "expected_pcrs"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "attestation_profile": {
+            "properties": {
+              "pcr_bank": {
+                "const": "sha256"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "expected_pcrs": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^0x[A-Fa-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "attestation_profile": {
+            "properties": {
+              "pcr_bank": {
+                "const": "sha384"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "expected_pcrs": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^0x[A-Fa-f0-9]{96}$"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "file_id": "ASCR-16-OE03-Lineage-Token-Schema.json",
+  "version": "1.0 — June 2026",
+  "read_me": {
+    "scope": "Normative JSON Schema for the ASCR-16 lineage token.",
+    "precedence": "The ASCR-16 main policy is authoritative for policy requirements; this schema is authoritative for lineage-token fields and structural validation.",
+    "relationship_to_sibling_oes": "OE01 provides implementation and response guidance. OE02 provides latency, deployment-signoff, and context-feed configuration records.",
+    "scope_limitation": "This schema validates token structure and field constraints. It does not itself verify signatures, cloud or edge attestation evidence, ASCR-10 authorization state, replay state, or runtime policy.",
+    "identifier_note": "The top-level $id is the canonical identifier of this JSON Schema artifact. The token field schema_version identifies the lineage-token payload version. They are intentionally distinct and are not interchangeable.",
+    "change_control": "Versioned in lockstep with ASCR-16; review whenever the normative lineage-token field structure, field constraints, signing-input contract, attestation-profile branch logic, or authoritative ASCR-16 requirements change.",
+    "before_you_operationalize": "Confirm that the authoritative ASCR-16 policy, deployment-approved cryptographic-transition profile, application-signing-key registry, device-class attestation profile, replay configuration, evidence destinations, and ASCR-10 authorization dependency are defined before relying on this schema in production.",
+    "what_you_must_define_before_use": "Define the deployment-approved cryptographic-transition profile, pipeline_svid authorization, application-signing-key bindings and lifecycle, attestation reference values, replay-cache namespace and retention, evidence destinations, and the current ASCR-10 authorization source before production use."
+  }
+}
